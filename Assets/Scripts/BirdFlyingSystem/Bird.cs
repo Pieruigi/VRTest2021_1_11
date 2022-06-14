@@ -40,11 +40,11 @@ namespace Zomp
         float velocitySmoothTime = 10;
 
         // 0 means you fall down like a rock, 1 you don't fall at all
-        float wingsFallResistanceFactor = 0.4f; 
+        float wingsResistanceFactor = 0.8f; 
 
         // 0 means the wing is closed, 1 is open
         // Actual surface is wingMaxSurface * stretchRatio
-        float leftWingStretchRatio = 0;
+        float leftWingStretchRatio = 1;
         float rightWingStretchRatio = 1;
 
 
@@ -61,7 +61,8 @@ namespace Zomp
         // Update is called once per frame
         void Update()
         {
-            ComputeAcceleration();
+            //ComputeAcceleration();
+            ComputeResistanceAndTorque();
 
             // If not grounded add gravity
             if (!IsGrounded())
@@ -70,87 +71,54 @@ namespace Zomp
             }
 
             // Get current velocity
-            currentVelocity = Vector3.MoveTowards(currentVelocity, targetVelocity, velocitySmoothTime * Time.deltaTime);
-            Debug.Log("TargetVelocity:" + targetVelocity);
+            //currentVelocity = Vector3.MoveTowards(currentVelocity, targetVelocity, velocitySmoothTime * Time.deltaTime);
+            currentVelocity = targetVelocity;
+            //Debug.Log("TargetVelocity:" + targetVelocity);
             Debug.Log("CurrentVelocity:" + currentVelocity);
         }
 
-        void ComputeAcceleration()
+        void ComputeResistanceAndTorque()
         {
-            // Planar acceleration
-            // If the bird is falling we need to calculate the acceleration depending of the wings orientation
-            // We only take into account the vertical component of the current velocity
-            float vSpeed = currentVelocity.y;
-            if(vSpeed < 0)
+            // You must be in movement
+            if (currentVelocity.magnitude == 0)
+                return;
+
+            Vector3 leftWingRes = Vector3.zero, rightWingRes = Vector3.zero;
+            
+            // Left wing
+            if(leftWingStretchRatio > 0)
             {
-                // The bird is falling, so new need to compute che planar acceleration
-                // Create a vector to rapresent the vertical fall
-                Vector3 fallVelocity = Vector3.up * vSpeed; // This vector looks down
+                float resFactor = leftWingStretchRatio * wingsResistanceFactor;
+                // Project the velocity on the wing normal to compute the resistance 
+                leftWingRes = Vector3.Project(currentVelocity * resFactor, leftWingPivot.up);
 
-                Vector3 leftGlide, rightGlide;
-                Vector3 leftFallResistance, rightFallResistance;
-                Vector3 glide = Vector3.zero;
-                Vector3 fallResistance = Vector3.zero;
+                // We are not upside down
+                if (Vector3.Dot(currentVelocity, leftWingRes) > 0)
+                    leftWingRes *= -1;
 
-                // No glide with closed wings or upside down flying
-                if(leftWingStretchRatio > 0 && leftWingPivot.up.y > 0)
-                {
-                    // The surface normal is the pivot Y coordinate
-                    Vector3 wingNormal = leftWingPivot.up;
-                    // The resistance magnitude
-                    float resistance = leftWingStretchRatio * wingsFallResistanceFactor;
-                    Debug.Log("Resistance:" + resistance);
-                    // Glide acceleration is the projection of the resistance on the plane XZ
-                    // The acceleration is computed locally ( so we need to apply it taking into account 
-                    // the bird fwd projected on the XZ plane )
-                    leftGlide = Vector3.ProjectOnPlane(wingNormal * resistance, Vector3.up);
-                    leftGlide = leftGlide * Mathf.Abs(vSpeed) * Time.deltaTime;
-                    // The fall resistance is the projection of the resistance on the Y axis
-                    leftFallResistance = Vector3.Project(wingNormal * resistance, Vector3.up);
-                    Debug.Log("LeftFallResistance_1:" + leftFallResistance);
-                    leftFallResistance = leftFallResistance * Mathf.Abs(vSpeed) * Time.deltaTime;
-
-                    Debug.Log("LeftGlide:" + leftGlide);
-                    Debug.Log("LeftFallResistance.Y:" + leftFallResistance.y);
-
-                    // Add
-                    glide = leftGlide;
-                    fallResistance = leftFallResistance;
-                }
-
-                // No glide with closed wings or upside down flying
-                if (rightWingStretchRatio > 0 && rightWingPivot.up.y > 0)
-                {
-                    // The surface normal is the pivot Y coordinate
-                    Vector3 wingNormal = rightWingPivot.up;
-                    // The resistance magnitude
-                    float resistance = rightWingStretchRatio * wingsFallResistanceFactor;
-                    Debug.Log("Resistance:" + resistance);
-                    // Glide acceleration is the projection of the resistance on the plane XZ
-                    // The acceleration is computed locally ( so we need to apply it taking into account 
-                    // the bird fwd projected on the XZ plane )
-                    rightGlide = Vector3.ProjectOnPlane(wingNormal * resistance, Vector3.up);
-                    rightGlide = rightGlide * Mathf.Abs(vSpeed) * Time.deltaTime;
-                    // The fall resistance is the projection of the resistance on the Y axis
-                    rightFallResistance = Vector3.Project(wingNormal * resistance, Vector3.up);
-                    Debug.Log("RightFallResistance_1:" + rightFallResistance);
-                    rightFallResistance = rightFallResistance * Mathf.Abs(vSpeed) * Time.deltaTime;
-
-                    Debug.Log("RightGlide:" + rightGlide);
-                    Debug.Log("RightFallResistance.Y:" + rightFallResistance.y);
-
-                    // Add
-                    glide = rightGlide;
-                    fallResistance = rightFallResistance;
-                }
-
-                Debug.Log("TargetVelocity.Y:" + targetVelocity.y);
-                // Adjust target velocity
-                targetVelocity += fallResistance + glide;
-
+                Debug.Log("LeftWingRes:" + leftWingRes);
             }
+
+            // Right wing
+            if (rightWingStretchRatio > 0)
+            {
+                float resFactor = rightWingStretchRatio * wingsResistanceFactor;
+                // Project the velocity on the wing normal to compute the resistance 
+                rightWingRes = Vector3.Project(currentVelocity * resFactor, rightWingPivot.up);
+
+                // We are not upside down
+                if (Vector3.Dot(currentVelocity, rightWingRes) > 0)
+                    rightWingRes *= -1;
+
+                Debug.Log("RightWingRes:" + rightWingRes);
+            }
+
+            // Update target velocity
+            targetVelocity += ( leftWingRes + rightWingRes ) * Time.deltaTime;
+
         }
 
+      
         #region public
         public bool IsGrounded()
         {
